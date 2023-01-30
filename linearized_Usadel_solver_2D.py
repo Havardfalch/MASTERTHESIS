@@ -54,7 +54,7 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=
     #The ghost points at the end are different due to boundary conditions
     diag[0,:] = -1/(2*dy)
     diag[-1,:] = 1/(2*dy)
-    diag[:,0] = 1/(2*dx)
+    diag[:,0] = -1/(2*dx)
     diag[:,-1] = 1/(2*dx)
     diag = np.reshape(diag, diag_x_shape*diag_y_shape)
     
@@ -81,8 +81,8 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=
     
     top_bc_diag[-1,1:-1] = -1/(2*dy)
     bottom_bc_diag[0,1:-1] = 1/(2*dy)
-    #right_bc_diag[1:-1,-1] = -1/(2*dx)
-    #left_bc_diag[1:-1,0] = 1/(2*dx)
+    right_bc_diag[1:-1,-1] = -1/(2*dx)
+    left_bc_diag[1:-1,0] = 1/(2*dx)
     
     #Reshape all arrays to be one dimensional and fix them to be the proper length
     upper_diag = np.reshape(upper_diag,diag.shape[0])[:-1]
