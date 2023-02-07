@@ -21,8 +21,8 @@ import time
 t1 = time.time()
 def g_bc_SNS(epsilon, theta, Nx, Ny):
     g=np.zeros((Ny+2, Nx+2), dtype = complex)
-    g[1:Ny+1,0] = -np.sinh(np.arctanh(1/epsilon))* np.exp(1j*theta/2)
-    g[1:Ny+1,-1] = -np.sinh(np.arctanh(1/epsilon)) * np.exp(-1j*theta/2)
+    g[1:Ny+1,0] = -np.sinh(np.arctanh(1/epsilon))* np.exp(1j*theta/2)/3
+    g[1:Ny+1,-1] = -np.sinh(np.arctanh(1/epsilon)) * np.exp(-1j*theta/2)/3
 
     g = np.reshape(g,(Nx+2)*(Ny+2))
     return g
@@ -33,17 +33,13 @@ def g_bc_SN(epsilon, theta, Nx, Ny):
     g = np.reshape(g,(Nx+2)*(Ny+2))
     return g
 
-Nx = 100
+Nx = 50
 Ny = 10
 x,dx = np.linspace(0,2,Nx,retstep = True)
 y, dy = np.linspace(0,2,Ny,retstep = True)
 
 A = np.zeros((Ny, Nx,2))
-"""for i in range(Ny):
-    for j in range(Nx):
-        A[i,j,0] = j*0.001
-        A[i,j,1] = i*0.001
-"""
+
 
 epsilons1 = np.linspace(0,2,300,dtype = complex)
 epsilons2 = np.linspace(2.1,30, 280, dtype = complex)
@@ -56,11 +52,10 @@ f_sols_minus = np.zeros((epsilons.shape[0],Ny,Nx),dtype = complex)
 f_grads = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
 f_grads_minus = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
 
-thetas = np.linspace(0,4*np.pi,100)
+thetas = np.linspace(0,4*np.pi,32)
 theta = 0
 currents = np.zeros(thetas.shape[0], dtype = complex)
 pair_corrs = np.zeros((thetas.shape[0], Ny, Nx), dtype = complex)
-
 """
 #Solves with BC for SN system
 f_sols, f_grads = get_Usadel_solution(epsilons, f_sols, f_grads, g_bc_SN, x, y, dx, dy, A, theta = theta)
@@ -102,7 +97,7 @@ plt.show()
 #Plotting for the SN case
 """
 plt.pcolormesh(x,y,current_x.real,cmap='seismic')
-plt.title("Real part of current")
+plt.title("Real part of current in x direction")
 plt.colorbar()
 plt.show()
 plt.pcolormesh(x,y,pair_corr.real,cmap='seismic')

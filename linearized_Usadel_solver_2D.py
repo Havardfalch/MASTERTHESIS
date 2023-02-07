@@ -8,7 +8,7 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg as splinalg
 
-def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=-1):
+def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=-1, use_kl = True):
     """
     Create the matrix describing the finite difference version of the Usadel equation
     Ghost points are used, i. e. an extra point is added outside the lattice in each row and column
@@ -52,10 +52,14 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=
     #All points excluding the ghost points follow normal finite difference scheme
     diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 2j*eps/D -  4*e_*np.sum(A*A, axis = 2)) 
     #The ghost points at the end are different due to boundary conditions
-    diag[0,:] = -1/(2*dy)
+    diag[0,:] = 1/(2*dy)
     diag[-1,:] = 1/(2*dy)
-    diag[:,0] = -1/(2*dx)
+    diag[:,0] = 1/(2*dx)
     diag[:,-1] = 1/(2*dx)
+    if use_kl:
+        diag[0,:] = -1/(2*dy)
+        diag[:,0] = -1/(2*dx)
+        
     diag = np.reshape(diag, diag_x_shape*diag_y_shape)
     
     #Create the upper and lower diagonals and fil them with values according to the finite difference scheme
@@ -78,11 +82,11 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=
     bottom_bc_diag = np.zeros_like(upper_diag)
     right_bc_diag = np.zeros_like(upper_diag)
     left_bc_diag = np.zeros_like(upper_diag)
-    
-    top_bc_diag[-1,1:-1] = -1/(2*dy)
-    bottom_bc_diag[0,1:-1] = 1/(2*dy)
-    right_bc_diag[1:-1,-1] = -1/(2*dx)
-    left_bc_diag[1:-1,0] = 1/(2*dx)
+    if use_kl:
+        top_bc_diag[-1,1:-1] = -1/(2*dy)
+        bottom_bc_diag[0,1:-1] = 1/(2*dy)
+        right_bc_diag[1:-1,-1] = -1/(2*dx)
+        left_bc_diag[1:-1,0] = 1/(2*dx)
     
     #Reshape all arrays to be one dimensional and fix them to be the proper length
     upper_diag = np.reshape(upper_diag,diag.shape[0])[:-1]
@@ -99,6 +103,7 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=
     difference_matrix = sparse.diags((diag,upper_diag,lower_diag, upup_diag, lowlow_diag, top_bc_diag, bottom_bc_diag, right_bc_diag, left_bc_diag), 
                                      [0, 1, -1, diag_x_shape, -diag_x_shape, -2*diag_x_shape, 2*diag_x_shape, -2, 2])
     return difference_matrix
+
 def grad_f(f, f_out, x, y, dx, dy):
     """
     Calculates the gradients in the x and y directions of f.
@@ -132,7 +137,7 @@ def grad_f(f, f_out, x, y, dx, dy):
     f_out[:,:,1] = der_y_f
     return f_out
 
-def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, A, theta = 0, D=1, e=-1):
+def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, A, theta = 0, D=1, e=-1, use_kl = False):
     """
     Solves the finite difference version of the Usadel equation using ghost points given
     the vector potential A and a discretized space (x,y), for the values of the energies
@@ -184,9 +189,9 @@ def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, 
     Nx = x.shape[0]
     Ny = y.shape[0]
     for i in range(epsilons_fun.shape[0]):
-        g_diff_mat = ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=epsilons_fun[i], D=D, e_=e).tocsc()
-        g = bc_fun(epsilons_fun[i], theta, Nx, Ny)
-        f_out= splinalg.spsolve(g_diff_mat,g)
+        g_diff_mat = ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=epsilons_fun[i], D=D, e_=e, use_kl = use_kl).tocsr()
+        g = bc_fun(epsilons_fun[i], theta, Nx, Ny, use_kl)
+        f_out= splinalg.spsolve(g_diff_mat,g, use_umfpack=False)
         f_grads_f[i] = grad_f(f_out.copy(), f_grads_f[i], x, y, dx, dy)
         f_new = np.reshape(np.reshape(f_out, (Ny+2,Nx+2))[1:-1,1:-1], (Ny,Nx))
         f_sols_f[i] = f_new
