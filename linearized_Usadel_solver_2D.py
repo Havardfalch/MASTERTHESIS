@@ -7,8 +7,9 @@ Created on Mon Jan 30 08:53:44 2023
 import numpy as np
 from scipy import sparse
 from scipy.sparse import linalg as splinalg
+from tqdm import tqdm
 
-def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=-1, use_kl = True):
+def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps, D=1, e_=-1, use_kl = True):
     """
     Create the matrix describing the finite difference version of the Usadel equation
     Ghost points are used, i. e. an extra point is added outside the lattice in each row and column
@@ -50,7 +51,7 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=1, D=1, e_=
     diag = np.zeros((diag_y_shape,diag_x_shape), dtype = complex)       
     
     #All points excluding the ghost points follow normal finite difference scheme
-    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 2j*eps/D -  4*e_*np.sum(A*A, axis = 2)) 
+    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 1j*2*eps/D -  4*e_*np.sum(A*A, axis = 2)) 
     #The ghost points at the end are different due to boundary conditions
     diag[0,:] = 1/(2*dy)
     diag[-1,:] = 1/(2*dy)
@@ -137,7 +138,7 @@ def grad_f(f, f_out, x, y, dx, dy):
     f_out[:,:,1] = der_y_f
     return f_out
 
-def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, A, theta = 0, D=1, e=-1, use_kl = False):
+def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, A, theta = 0, D=1, e=-1, use_kl = False, gamma = 3):
     """
     Solves the finite difference version of the Usadel equation using ghost points given
     the vector potential A and a discretized space (x,y), for the values of the energies
@@ -188,11 +189,48 @@ def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, 
     """
     Nx = x.shape[0]
     Ny = y.shape[0]
-    for i in range(epsilons_fun.shape[0]):
-        g_diff_mat = ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps=epsilons_fun[i], D=D, e_=e, use_kl = use_kl).tocsr()
-        g = bc_fun(epsilons_fun[i], theta, Nx, Ny, use_kl)
-        f_out= splinalg.spsolve(g_diff_mat,g, use_umfpack=False)
+    for i in tqdm(range(epsilons_fun.shape[0])):
+        g_diff_mat = ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, epsilons_fun[i], D=D, e_=e, use_kl = use_kl).tocsc()
+        g = bc_fun(epsilons_fun[i], theta, Nx, Ny, use_kl, gamma = gamma)
+        f_out= splinalg.spsolve(-g_diff_mat,g, use_umfpack=False)
         f_grads_f[i] = grad_f(f_out.copy(), f_grads_f[i], x, y, dx, dy)
         f_new = np.reshape(np.reshape(f_out, (Ny+2,Nx+2))[1:-1,1:-1], (Ny,Nx))
         f_sols_f[i] = f_new
     return f_sols_f, f_grads_f
+
+def update_A_field(x_grid, y_grid, x_current, y_current, dx, dy, mu_0 = 1):
+    """
+    Calculates the change in the magnetic vector potential A due to the currents in the system.
+
+    Parameters
+    ----------
+    x_grid : 2d array of shape (Ny,Nx)
+        Contains the x_coordinate of each grid point.
+    y_grid : 2d array of shape (Ny,Nx)
+        Contains the y_coordinate of each grid point.
+    x_current : 2d array of shape (Ny,Nx)
+        Contains the current in the x direction for each grid point.
+    y_current : 2d array of shape (Ny,Nx)
+        Contains the current in the y direction for each grid point.
+    dx : Float
+        The spacing between grid points in the x direction.
+    dy : Float
+        The spacing between grid points in the x direction.
+    mu_0 : Flota, optional
+        The value of the vacuum permeability. The default is 1.
+
+    Returns
+    -------
+    delta_A : 3d array of shape (Ny,Nx,2)
+        The magnetic vector potential induced by the currents in the material.
+
+    """
+    delta_A = np.zeros((x_current.shape[0], x_current.shape[1], 2), dtype = float)
+    for i in range(x_current.shape[0]):
+        for j in range(x_current.shape[1]):
+            divisor = ((x_grid[i,j]-x_grid)**2+(y_grid[i,j]-y_grid)**2)
+            divisor[divisor==0.0] = np.min(divisor + (divisor==0)*np.max(divisor)) #Avoid 0 distance and thus infinite contribution
+            distances = 1/np.sqrt(divisor)
+            delta_A[i,j,0] = mu_0/(4*np.pi) * np.sum(x_current/distances)*dx*dy
+            delta_A[i,j,1] = mu_0/(4*np.pi) * np.sum(y_current/distances)*dx*dy
+    return delta_A

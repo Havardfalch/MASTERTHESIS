@@ -16,22 +16,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate as spint
 from linearized_Usadel_solver_2D import get_Usadel_solution
+from Boundary_conditions_for_linearized_Usadel import g_bc_SN, g_bc_SNS
 import time
 
+
 t1 = time.time()
-def g_bc_SNS(epsilon, theta, Nx, Ny):
-    g=np.zeros((Ny+2, Nx+2), dtype = complex)
-    g[1:Ny+1,0] = -np.sinh(np.arctanh(1/epsilon))* np.exp(1j*theta/2)/3
-    g[1:Ny+1,-1] = -np.sinh(np.arctanh(1/epsilon)) * np.exp(-1j*theta/2)/3
 
-    g = np.reshape(g,(Nx+2)*(Ny+2))
-    return g
-
-def g_bc_SN(epsilon, theta, Nx, Ny):
-    g=np.zeros((Ny+2, Nx+2), dtype = complex)
-    g[1:Ny+1,0] = -np.sinh(np.arctanh(1/epsilon))
-    g = np.reshape(g,(Nx+2)*(Ny+2))
-    return g
 
 Nx = 50
 Ny = 10
