@@ -37,6 +37,11 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps, D=1, e_=-1
         The value of the diffusion constant. The default is 1.
     e_ : Float, optional
         The value of the electron charge. The default is -1.
+    use_kl : Bool, optional
+        Boolean deciding which type of boundary condition to use.
+        If True Kuprianov-Lukichev boundary conditions will be used.
+        If False transparent boundary conditions will be used.
+        The default is True.
 
     Returns
     -------
@@ -51,7 +56,7 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps, D=1, e_=-1
     diag = np.zeros((diag_y_shape,diag_x_shape), dtype = complex)       
     
     #All points excluding the ghost points follow normal finite difference scheme
-    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 1j*2*eps/D -  4*e_*np.sum(A*A, axis = 2)) 
+    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 1j*2*(eps)/D -  4*e_*np.sum(A*A, axis = 2)) 
     #The ghost points at the end are different due to boundary conditions
     diag[0,:] = 1/(2*dy)
     diag[-1,:] = 1/(2*dy)
@@ -90,6 +95,9 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps, D=1, e_=-1
         left_bc_diag[1:-1,0] = 1/(2*dx)
     
     #Reshape all arrays to be one dimensional and fix them to be the proper length
+    #The arrays to the rights ot the diagonal remove values from the end of the array while
+    #arrays to the left remove from the start. This is since arrays to the right represent
+    #points later in the flattened grid while the ones to the left refer to points earlier
     upper_diag = np.reshape(upper_diag,diag.shape[0])[:-1]
     lower_diag = np.reshape(lower_diag, diag.shape[0])[1:]
     upup_diag = np.reshape(upup_diag, diag.shape[0])[:-diag_x_shape]
@@ -138,7 +146,7 @@ def grad_f(f, f_out, x, y, dx, dy):
     f_out[:,:,1] = der_y_f
     return f_out
 
-def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, A, theta = 0, D=1, e=-1, use_kl = False, gamma = 3):
+def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, A, theta = 0, D=1, e=-1, use_kl = True, gamma = 3):
     """
     Solves the finite difference version of the Usadel equation using ghost points given
     the vector potential A and a discretized space (x,y), for the values of the energies
@@ -177,6 +185,14 @@ def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, 
         The value of the diffusion constant. The default is 1.
     e_ : Float, optional
         The value of the electron charge. The default is -1.
+    use_kl : Bool, optional
+        Boolean deciding which type of boundary condition to use.
+        If True Kuprianov-Lukichev boundary conditions will be used.
+        If False transparent boundary conditions will be used.
+        The default is True.
+    gamma : Float, optional
+        The value of the conductance of the interface in Kuprianov Lukichev boundary
+        conditions. The default is 3.
 
     Returns
     -------

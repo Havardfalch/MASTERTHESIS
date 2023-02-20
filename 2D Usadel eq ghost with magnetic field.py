@@ -8,65 +8,69 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate as spint
 from linearized_Usadel_solver_2D import get_Usadel_solution, update_A_field
-from Boundary_conditions_for_linearized_Usadel import g_bc_SSNSS
+from Boundary_conditions_for_linearized_Usadel import g_bc_SSNSS, calculate_correct_A_field
 import time
 import matplotlib.colors as colors
 
 import cProfile as profile
 import pstats
 
-
-
 t1 = time.time()
 
 
 
 
-Nx = 200
-Ny = 200
+Nx = 100
+Ny = Nx
 e = -1
-Lx = 12
-Ly = 12
+Lx = 5
+Ly = 5
 D = 1
-n = 3
+n = -1
 theta = n*2*np.pi
-epsilon_min = 0
+eV = 0.5
 tol = 1e-3
 gamma = 3
-use_kl = False
+use_kl = True
 x,dx = np.linspace(-Lx/2,Lx/2,Nx,retstep = True)
 y, dy = np.linspace(-Ly/2,Ly/2,Ny,retstep = True)
 max_its = 1
 
+B0 = n*np.pi/((Lx+(0*dx))*(Ly+(0*dx)))
+B_and_bc = np.zeros((Ny+2, Nx+2,2))
+B_and_bc[0,:,0] = n*np.pi/(4*Lx)
+B_and_bc[-1,:,0] = -n*np.pi/(4*Lx)
+B_and_bc[:,0,1] = -n*np.pi/(4*Ly)
+B_and_bc[:,-1,1] = n*np.pi/(4*Ly)
+B_and_bc[1:-1,1:-1,1] = B0
 
-A = np.zeros((Ny, Nx,2))
-for i in range(Ny):
-    for j in range(Nx):
-        A[i,j,0] = (i-(Ny-1)/2)*n*np.pi/(2*np.max(y)*Ny)
-        A[i,j,1] = -(j-(Nx-1)/2)*n*np.pi/(2*np.max(x)*Nx)
+A = calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy)[1:-1,1:-1]
+slc = np.max((1, Nx//20))
+
+
 multiplier = 0
 A*=multiplier
 
-
-print("Max of A", np.max(A))
 print("Total phase in SC", theta)
 if use_kl:
     print("Using Kuprianov-Lukichev bcs")
 else:
     print("Using transparent bcs")
-print("Applied voltage", epsilon_min)
+print("Applied voltage", eV)
 print("Size in x:", Lx, "Points in x:", Nx, "Size in y:", Ly, "Points in y:", Ny)
+print("Max of A", np.max(np.linalg.norm(A, axis = 2)))
 
-
-epsilons1 = np.linspace(epsilon_min,2,300,dtype = complex)
+#epsilons0 = np.linspace(eV, 0.65, 150, endpoint = False, dtype=complex)
+#epsilons1 = np.append(epsilons0, np.linspace(0.65, 2, 200, dtype = complex))
+epsilons1 = np.linspace(eV,2,300,dtype = complex)
 epsilons2 = np.linspace(2,30, 280, dtype = complex)
 epsilons = np.append(epsilons1,epsilons2)
-epsilons[0]+= 1e-5
+#epsilons[0]+= 1e-5
 
 epsilons_minus = -epsilons
 
-epsilons+= -1j*(1e-4)
-epsilons_minus+= -1j*(1e-4)
+epsilons+= -1j*(1e-2)#*(epsilons<=1)
+epsilons_minus+= -1j*(1e-2)#*(epsilons_minus>=-1)
 
 A_delta = np.zeros_like(A)
 old_A_delta = np.ones_like(A)
@@ -81,9 +85,9 @@ f_grads = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
 f_grads_minus = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
 
 
-f_sols, f_grads = get_Usadel_solution(epsilons, f_sols, f_grads, g_bc_SSNSS, x, y, dx, dy, A, theta = theta, use_kl = use_kl,D=D)
+f_sols, f_grads = get_Usadel_solution(epsilons, f_sols, f_grads, g_bc_SSNSS, x, y, dx, dy, A, theta = theta, use_kl = use_kl,D=D, gamma = gamma)
 
-f_sols_minus,f_grads_minus = get_Usadel_solution(epsilons_minus, f_sols_minus, f_grads_minus, g_bc_SSNSS, x, y, dx, dy, A, theta = theta,use_kl = use_kl,D=D)
+f_sols_minus,f_grads_minus = get_Usadel_solution(epsilons_minus, f_sols_minus, f_grads_minus, g_bc_SSNSS, x, y, dx, dy, A, theta = theta,use_kl = use_kl,D=D, gamma = gamma)
 
 pair_corr = spint.trapz(f_sols-f_sols_minus, x = epsilons, axis = 0)
 abs_corr = np.abs(pair_corr)
@@ -113,19 +117,22 @@ plt.colorbar()
 plt.title("Current in y-direction")
 plt.show()
 
-slc = Nx//20
-plt.quiver(x[::slc],y[::slc],current_x[::slc,::slc].real, current_y[::slc,::slc].real)
+slc = int(Nx//20)
+plt.quiver(x[slc//2::slc],y[slc//2::slc],current_x[slc//2::slc,slc//2::slc].real, current_y[slc//2::slc,slc//2::slc].real)
+plt.scatter(0,0)
 plt.title("Supercurrent")
 plt.show()
 
-plt.quiver(x[::slc],y[::slc],(np.abs(current_x[::slc,::slc].real)**(1/4))*np.sign(current_x[::slc,::slc].real), (np.abs(current_y[::slc,::slc].real)**(1/4))*np.sign(current_y[::slc,::slc].real), angles = (np.arctan2(current_y[::slc,::slc].real, current_x[::slc,::slc].real)*180.0/np.pi))
-plt.title("Fourth root of supercurrent")
+plt.quiver(x[slc//2::slc],y[slc//2::slc],(current_x[slc//2::slc,slc//2::slc].real*0+1), (current_y[slc//2::slc,slc//2::slc].real*0+1), angles = (np.arctan2(current_y[slc//2::slc,slc//2::slc].real, current_x[slc//2::slc,slc//2::slc].real)*180.0/np.pi))
+plt.scatter(0,0)
+plt.title("Direction of supercurrent")
 plt.show()
 
-plt.quiver(x[::slc],y[::slc],(A+A_delta) [::slc,::slc,0], (A)[::slc,::slc,1])
+"""plt.quiver(x[slc//2::slc],y[slc//2::slc],(A) [slc//2::slc,slc//2::slc,0], (A)[slc//2::slc,slc//2::slc,1])
+plt.scatter(0,0)
 plt.title("Magnetic vector potential")
 plt.show()
-"""
+
 plt.pcolormesh(x[1:-1],y, div_current_x.real,cmap='seismic', vmin = -np.max(np.abs(div_current_x.real)), vmax = np.max(np.abs(div_current_x.real)))
 plt.colorbar()
 plt.title("Divergence of current in x-direction")
@@ -145,29 +152,18 @@ plt.colorbar()
 plt.title("Absolute value of current")
 plt.show()
 
-plt.pcolormesh(x,y,abs_current,norm=colors.LogNorm(vmin=np.min(abs_current), vmax=np.max(abs_current)), cmap = 'seismic')
+plt.pcolormesh(x,y,abs_current,norm=colors.LogNorm(vmin=np.sort(abs_current.flatten())[1], vmax=np.max(abs_current)), cmap = 'seismic')
 plt.colorbar()
 plt.title("Absolute value of current")
 plt.show()
 
 
-
-
-"""
-plt.pcolormesh(x,y,pair_corr.real,cmap='seismic')
-plt.title("Real part of pair correlation")
-plt.colorbar()
-plt.show()
-plt.pcolormesh(x,y,pair_corr.imag,cmap='seismic',vmin = -np.max(np.abs(pair_corr.imag)), vmax = np.max(np.abs(pair_corr.imag)))
-plt.title("Imaginary part of pair correlation")
-plt.colorbar()
-plt.show()
-"""
-plt.pcolormesh(x,y,abs_corr,cmap='seismic', norm=colors.LogNorm(vmin = np.min(abs_corr), vmax = np.max(np.abs(abs_corr))))
+plt.pcolormesh(x,y,abs_corr,cmap='seismic', norm=colors.LogNorm(vmin = np.sort(abs_corr.flatten())[1], vmax = np.max(np.abs(abs_corr))))
 plt.title("Absolute value of pair correlation")
 plt.colorbar()
 plt.show()
-phases = np.arctan(pair_corr.imag/pair_corr.real)  #Why use arctan and not arctan2?
+
+phases = np.arctan(pair_corr.imag/pair_corr.real)  
 plt.pcolormesh(x,y,phases,cmap='seismic',vmin = np.min(phases), vmax = np.max(phases))
 plt.title("Phase of pair correlation")
 plt.colorbar()
@@ -175,6 +171,11 @@ plt.show()
 # print profiling output
 #stats = pstats.Stats(prof).strip_dirs().sort_stats("cumtime")
 #stats.print_stats(10)
+
+xv, yv = np.meshgrid(x,y)
+plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
+plt.colorbar()
+plt.show()
 
 t2 = time.time()
 print("Time taken", t2-t1)
