@@ -86,6 +86,57 @@ def g_bc_SNS(epsilon, theta, Nx, Ny, gamma = None):
     g = np.reshape(g,(Nx+2)*(Ny+2))
     return g
 
+def f_integrated_z_direction(epsilon, theta, Nx, Ny, x, y, Lz=1, G_T=0.3, G_N=1, core_locs = [[None, None]], threshold  = 1, nu=1):
+    """
+    Calculate the right hand side of the linearized Usadel equation when a thin film normal
+    metal is placed on top of a superconductor and the Kuprianov-Lukichev boundary conditions
+    have been integrated out to become a part of the Usadel equation. As ghost points are
+    used and vacuum is surrounding the normal metal 
+
+    Parameters
+    ----------
+    epsilon : Float
+        The value of the energy.
+    theta : Float
+        The complex phase of the underlying superconductor.
+    Nx : Integer
+        Number of grid points in the x-direction.
+    Ny : TYPE
+        Number of grid points in the y-direction.
+    x : 1D array of length Nx
+        The x coordinates of the system.
+    y : 1D array of length Ny
+        The y coordinates of the system.
+     Lz : Float, optional
+         The thickness of the normal metal thin film. The default is 1.
+     G_T : Float, optional
+         Tunneling conductance between the normal metal and the superconductor. The default is 1.
+     G_N : Float, optional
+         Conductance of the norma metal. The default is 1.
+     core_locs : 2D array of size (Number of vortices, 2)
+         Array containing the location of the cortex cores. The default is [[None,None]]
+     threshold : Float, optional
+         The size of the vortex cores meausured in number of coherence lengths. The default is 1.
+     nu : Float, optional
+         A number containing information about how fast the superconductivity recovers outside of a vortex.
+         The default is 1.
+
+    Returns
+    -------
+    f : 1D array of length (Nx+2)*(Ny+2)
+        An array containing the right hand side of the linearized Usadel equation.
+
+    """
+    f=np.zeros((Ny+2, Nx+2), dtype = complex)
+    delta = 1
+    if core_locs[0,0]!= None:
+        xv, yv = np.meshgrid(x,y)
+        for i in range(core_locs.shape[0]):
+            distance = np.sqrt((xv- core_locs[i,0])**2 + (yv - core_locs[i,1])**2)
+            delta *= np.tanh(nu*(distance)) #*(distance>threshold)
+    f[1:-1, 1:-1] = (G_T/G_N) *(1/(Lz**2))*np.sinh(np.arctanh(delta/epsilon))*np.exp(1j*theta)
+    f = np.reshape(f, (Nx+2)*(Ny+2))
+    return f
 
 def g_bc_SSNSS(epsilon, theta, Nx, Ny, use_kl = True, gamma = 3):
     """

@@ -11,6 +11,9 @@ from linearized_Usadel_solver_2D import get_Usadel_solution, update_A_field
 from Boundary_conditions_for_linearized_Usadel import g_bc_SSNSS, calculate_correct_A_field
 import time
 import matplotlib.colors as colors
+from scipy import special as spspecial
+
+from tqdm import tqdm
 
 import cProfile as profile
 import pstats
@@ -19,16 +22,46 @@ t1 = time.time()
 
 
 
+def int_func_for_A_x(t,x,y, B0):
+    if np.abs(t*x)<Lx/2 and np.abs(t*y)<Ly/2:
+        return -t*y*B0
+    else:
+        return 0
+def int_func_for_A_y(t,x,y,B0):
+    if np.abs(t*x)<Lx/2 and np.abs(t*y)<Ly/2:
+        return t*x*B0
+    else:
+        return 0
 
-Nx = 100
+def B_strength(x,y,lambd, threshold = 1, kappa=1, phi_0 = -np.pi):
+    if np.sqrt(x**2+y**2)<=Lx/4:
+        return -np.log(kappa)*phi_0/(2*np.pi*lambd**2)
+    else:
+        return -phi_0/(2*np.pi*lambd**2) * spspecial.kn(0, np.sqrt((x)**2+(y)**2)/lambd) * np.log(kappa)/spspecial.kn(0,threshold/lambd)
+
+
+def A_field_integrated_usadel(A, x, y, Nx, Ny, dx, dy, B0):
+    xv,yv = np.meshgrid(x,y)
+    for i in tqdm(range(xv.shape[0])):
+        for j in range(xv.shape[1]):
+            x_rel = xv[i,j]
+            y_rel = yv[i,j]
+            A[i,j,0] += spint.quad(int_func_for_A_x,0,1, args = (x_rel, y_rel,B0))[0]
+            A[i,j,1] += spint.quad(int_func_for_A_y,0,1, args = (x_rel, y_rel, B0))[0]
+                
+    return A
+
+
+
+Nx = 401
 Ny = Nx
 e = -1
-Lx = 5
-Ly = 5
+Lx = 12
+Ly = 12
 D = 1
-n = -1
+n = 2
 theta = n*2*np.pi
-eV = 0.5
+eV = 0
 tol = 1e-3
 gamma = 3
 use_kl = True
@@ -46,10 +79,13 @@ B_and_bc[1:-1,1:-1,1] = B0
 
 A = calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy)[1:-1,1:-1]
 slc = np.max((1, Nx//20))
-
+A = np.zeros(A.shape, dtype = float)
+A = A_field_integrated_usadel( A, x, y, Nx, Ny, dx, dy, B0)
 
 multiplier = 0
 A*=multiplier
+
+B = np.gradient(A[:,:,0], dx, axis = 0) -  np.gradient(A[:,:,1], dy, axis = 1)
 
 print("Total phase in SC", theta)
 if use_kl:
@@ -78,30 +114,42 @@ num_its = 0
 #Solves with BC for N with S on all 4 sides
 #prof = profile.Profile()
 #prof.enable()
-#while np.linalg.norm(A_delta-old_A_delta)>tol and num_its<max_its:
-f_sols = np.zeros((epsilons.shape[0],Ny,Nx),dtype = complex)
-f_sols_minus = np.zeros((epsilons.shape[0],Ny,Nx),dtype = complex)
-f_grads = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
-f_grads_minus = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
-
-
-f_sols, f_grads = get_Usadel_solution(epsilons, f_sols, f_grads, g_bc_SSNSS, x, y, dx, dy, A, theta = theta, use_kl = use_kl,D=D, gamma = gamma)
-
-f_sols_minus,f_grads_minus = get_Usadel_solution(epsilons_minus, f_sols_minus, f_grads_minus, g_bc_SSNSS, x, y, dx, dy, A, theta = theta,use_kl = use_kl,D=D, gamma = gamma)
-
-pair_corr = spint.trapz(f_sols-f_sols_minus, x = epsilons, axis = 0)
-abs_corr = np.abs(pair_corr)
-current_x = spint.trapz((f_sols*np.conjugate(f_grads_minus[:,:,:,0])- f_sols_minus*np.conjugate(f_grads[:,:,:,0]) + 2*e*(A)[:,:,0]*1j*(f_sols*np.conjugate(f_sols_minus)-f_sols_minus*np.conjugate(f_sols))).real, x = epsilons, axis = 0).real
-current_y = spint.trapz((f_sols*np.conjugate(f_grads_minus[:,:,:,1])- f_sols_minus*np.conjugate(f_grads[:,:,:,1]) + 2*e*(A)[:,:,1]*1j*(f_sols*np.conjugate(f_sols_minus)-f_sols_minus*np.conjugate(f_sols))).real, x = epsilons, axis = 0).real
-abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
-xv,yv = np.meshgrid(x,y)
-#old_A_delta = np.copy(A_delta)
-#A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
-num_its+=1
-'''print(np.max(A_delta), np.min(A_delta))
+while np.linalg.norm(A_delta-old_A_delta)>tol and num_its<max_its:
+    f_sols = np.zeros((epsilons.shape[0],Ny,Nx),dtype = complex)
+    f_sols_minus = np.zeros((epsilons.shape[0],Ny,Nx),dtype = complex)
+    f_grads = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
+    f_grads_minus = np.zeros((epsilons.shape[0],Ny,Nx,2),dtype = complex)
+    
+    
+    f_sols, f_grads = get_Usadel_solution(epsilons, f_sols, f_grads, g_bc_SSNSS, x, y, dx, dy, A+A_delta, theta = theta, use_kl = use_kl,D=D, gamma = gamma)
+    
+    f_sols_minus,f_grads_minus = get_Usadel_solution(epsilons_minus, f_sols_minus, f_grads_minus, g_bc_SSNSS, x, y, dx, dy, A+A_delta, theta = theta,use_kl = use_kl,D=D, gamma = gamma)
+    
+    pair_corr = spint.trapz(f_sols-f_sols_minus, x = epsilons, axis = 0)
+    abs_corr = np.abs(pair_corr)
+    current_x = e/2*spint.trapz((f_sols*np.conjugate(f_grads_minus[:,:,:,0])- f_sols_minus*np.conjugate(f_grads[:,:,:,0]) + 2*e*(A+A_delta)[:,:,0]*1j*(f_sols*np.conjugate(f_sols_minus)-f_sols_minus*np.conjugate(f_sols))).real, x = epsilons, axis = 0).real
+    current_y = e/2*spint.trapz((f_sols*np.conjugate(f_grads_minus[:,:,:,1])- f_sols_minus*np.conjugate(f_grads[:,:,:,1]) + 2*e*(A+A_delta)[:,:,1]*1j*(f_sols*np.conjugate(f_sols_minus)-f_sols_minus*np.conjugate(f_sols))).real, x = epsilons, axis = 0).real
+    abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
+    xv,yv = np.meshgrid(x,y)
+    old_A_delta = np.copy(A_delta)
+    A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
+    num_its+=1
+    print(np.max(A_delta), np.min(A_delta))
     print("Sum", np.sum(A_delta), "Average", np.average(A_delta), "Average abs", np.average(np.abs(A_delta)))
-    print("Norm of difference from last iteration:", np.linalg.norm(A_delta-old_A_delta))'''
-
+    print("Norm of difference from last iteration:", np.linalg.norm(A_delta-old_A_delta))
+B_induced = np.gradient(A_delta[:,:,0], dx, axis = 0) -  np.gradient(A_delta[:,:,1], dy, axis = 1)
+plt.pcolormesh(x,y,B,cmap='seismic')
+plt.colorbar()
+plt.title("Applied magnetic field")
+plt.show()
+plt.pcolormesh(x,y,B_induced,cmap='seismic')
+plt.colorbar()
+plt.title("Induced magnetic field")
+plt.show()
+plt.pcolormesh(x,y,B+B_induced,cmap='seismic')
+plt.colorbar()
+plt.title("Total magnetic field")
+plt.show()
 #prof.disable()
 plt.pcolormesh(x,y,current_x.real,cmap='seismic', vmin = -np.max(np.abs(current_x.real)), vmax = np.max(np.abs(current_x.real)))
 plt.colorbar()
@@ -128,11 +176,21 @@ plt.scatter(0,0)
 plt.title("Direction of supercurrent")
 plt.show()
 
-"""plt.quiver(x[slc//2::slc],y[slc//2::slc],(A) [slc//2::slc,slc//2::slc,0], (A)[slc//2::slc,slc//2::slc,1])
+plt.quiver(x[slc//2::slc],y[slc//2::slc],(A) [slc//2::slc,slc//2::slc,0], (A)[slc//2::slc,slc//2::slc,1])
 plt.scatter(0,0)
-plt.title("Magnetic vector potential")
+plt.title("Applied magnetic vector potential")
 plt.show()
 
+plt.quiver(x[slc//2::slc],y[slc//2::slc],(A_delta) [slc//2::slc,slc//2::slc,0], (A_delta)[slc//2::slc,slc//2::slc,1])
+plt.scatter(0,0)
+plt.title("Induced magnetic vector potential")
+plt.show()
+plt.quiver(x[slc//2::slc],y[slc//2::slc],(A+A_delta) [slc//2::slc,slc//2::slc,0], (A+A_delta)[slc//2::slc,slc//2::slc,1])
+plt.scatter(0,0)
+plt.title("Total magnetic vector potential")
+plt.show()
+
+"""
 plt.pcolormesh(x[1:-1],y, div_current_x.real,cmap='seismic', vmin = -np.max(np.abs(div_current_x.real)), vmax = np.max(np.abs(div_current_x.real)))
 plt.colorbar()
 plt.title("Divergence of current in x-direction")
@@ -164,9 +222,11 @@ plt.colorbar()
 plt.show()
 
 phases = np.arctan(pair_corr.imag/pair_corr.real)  
+a = int(np.round(theta/np.pi))
 plt.pcolormesh(x,y,phases,cmap='seismic',vmin = np.min(phases), vmax = np.max(phases))
-plt.title("Phase of pair correlation")
+plt.title(f"Phase of pair correlation with total phase {a} $\pi$")
 plt.colorbar()
+plt.savefig(f'.\Phase plots\Phase of pair correlation with total phase {a} pi using N = {Nx}.pdf')
 plt.show()
 # print profiling output
 #stats = pstats.Stats(prof).strip_dirs().sort_stats("cumtime")
@@ -175,6 +235,7 @@ plt.show()
 xv, yv = np.meshgrid(x,y)
 plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
 plt.colorbar()
+plt.title("Streamplot og current")
 plt.show()
 
 t2 = time.time()
