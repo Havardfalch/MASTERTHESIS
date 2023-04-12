@@ -59,7 +59,7 @@ e = -1
 Lx = 12
 Ly = 12
 D = 1
-n = 2
+n = 7
 theta = n*2*np.pi
 eV = 0
 tol = 1e-3
@@ -79,8 +79,8 @@ B_and_bc[1:-1,1:-1,1] = B0
 
 A = calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy)[1:-1,1:-1]
 slc = np.max((1, Nx//20))
-A = np.zeros(A.shape, dtype = float)
-A = A_field_integrated_usadel( A, x, y, Nx, Ny, dx, dy, B0)
+#A = np.zeros(A.shape, dtype = float)
+#A = A_field_integrated_usadel( A, x, y, Nx, Ny, dx, dy, B0)
 
 multiplier = 0
 A*=multiplier
