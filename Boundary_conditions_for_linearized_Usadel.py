@@ -134,7 +134,8 @@ def f_integrated_z_direction(epsilon, theta, Nx, Ny, x, y, Lz=1, G_T=0.3, G_N=1,
         for i in range(core_locs.shape[0]):
             distance = np.sqrt((xv- core_locs[i,0])**2 + (yv - core_locs[i,1])**2)
             delta *= np.tanh(nu*(distance)) #*(distance>threshold)
-    f[1:-1, 1:-1] = (G_T/G_N) *(1/(Lz**2))*np.sinh(np.arctanh(delta/epsilon))*np.exp(1j*theta)
+    #Check if there should be a minus sign here
+    f[1:-1, 1:-1] = -(G_T/G_N) *(1/(Lz**2))*np.sinh(np.arctanh(delta/epsilon))*np.exp(1j*theta)
     f = np.reshape(f, (Nx+2)*(Ny+2))
     return f
 
@@ -227,6 +228,7 @@ def calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy):
     conditions into account. These equations are collected into a single matrix equation
     which is then solve. Except for the boundary conditions every other equation is 
     a divergence condition and every other equation is an equation for the B-field.
+    This does not work when Nx and Ny are odd and Nx+1 and Ny+1 are divisible by 4.
 
     Parameters
     ----------
@@ -255,10 +257,10 @@ def calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy):
     """
     #Create the diagonal to take into account boundary conditions
     diag = np.zeros_like(B_and_bc)
-    diag[:1] = 1
-    diag[-1:] = 1
-    diag[:,:1] = 1
-    diag[:,-1:] = 1
+    diag[0] = 1
+    diag[-1] = 1
+    diag[:,0] = 1
+    diag[:,-1] = 1
     
     #Create the upper and lower diagonals and fil them with values according to the finite difference scheme
     #This corresponds the the points with x+dx and x-dx when looking at a points (x,y)
@@ -285,15 +287,15 @@ def calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy):
     
     #If the number of points Nx and Ny are odd the middle point should be 0 by symmetry
     if Nx%2==1 and Ny%2==1:
-        right[Ny//2, Nx//2] = 0
-        left[Ny//2, Nx//2] = 0
-        over_x[Ny//2, Nx//2] = 0
-        over_y[Ny//2, Nx//2] = 0
-        under_x[Ny//2, Nx//2] = 0
-        under_y[Ny//2, Nx//2] = 0
-        diag[Nx//2, Ny//2] = 1
-        B_and_bc[Nx//2, Ny//2] = 0
-        
+        right[Ny//2+1, Nx//2+1] = 0
+        left[Ny//2+1, Nx//2+1] = 0
+        over_x[Ny//2+1, Nx//2+1] = 0
+        over_y[Ny//2+1, Nx//2+1] = 0
+        under_x[Ny//2+1, Nx//2+1] = 0
+        under_y[Ny//2+1, Nx//2+1] = 0
+        diag[Nx//2+1, Ny//2+1] = 1
+        B_and_bc[Nx//2+1, Ny//2+1] = 0
+      
     #Reshape all arrays to be one dimensional and fix them to be the proper length
     #The arrays to the rights ot the diagonal remove values from the end of the array while
     #arrays to the left remove from the start. This is since arrays to the right represent
@@ -312,7 +314,7 @@ def calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy):
     
     #Create a vector with the rhs of the equation
     g = np.reshape(B_and_bc, diag.shape[0])
-    
+
     #Solve the matrix equation to find the vector potential
     A = np.reshape(splinalg.spsolve(difference_matrix, g, use_umfpack = True), (Ny+2, Nx+2,2))
     return A

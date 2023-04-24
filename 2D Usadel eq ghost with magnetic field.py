@@ -4,6 +4,8 @@ Created on Mon Jan 30 13:55:36 2023
 
 @author: Havard
 """
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate as spint
@@ -22,46 +24,15 @@ t1 = time.time()
 
 
 
-def int_func_for_A_x(t,x,y, B0):
-    if np.abs(t*x)<Lx/2 and np.abs(t*y)<Ly/2:
-        return -t*y*B0
-    else:
-        return 0
-def int_func_for_A_y(t,x,y,B0):
-    if np.abs(t*x)<Lx/2 and np.abs(t*y)<Ly/2:
-        return t*x*B0
-    else:
-        return 0
-
-def B_strength(x,y,lambd, threshold = 1, kappa=1, phi_0 = -np.pi):
-    if np.sqrt(x**2+y**2)<=Lx/4:
-        return -np.log(kappa)*phi_0/(2*np.pi*lambd**2)
-    else:
-        return -phi_0/(2*np.pi*lambd**2) * spspecial.kn(0, np.sqrt((x)**2+(y)**2)/lambd) * np.log(kappa)/spspecial.kn(0,threshold/lambd)
-
-
-def A_field_integrated_usadel(A, x, y, Nx, Ny, dx, dy, B0):
-    xv,yv = np.meshgrid(x,y)
-    for i in tqdm(range(xv.shape[0])):
-        for j in range(xv.shape[1]):
-            x_rel = xv[i,j]
-            y_rel = yv[i,j]
-            A[i,j,0] += spint.quad(int_func_for_A_x,0,1, args = (x_rel, y_rel,B0))[0]
-            A[i,j,1] += spint.quad(int_func_for_A_y,0,1, args = (x_rel, y_rel, B0))[0]
-                
-    return A
-
-
-
-Nx = 401
+Nx = 200
 Ny = Nx
 e = -1
-Lx = 12
-Ly = 12
+Lx = 4
+Ly = Lx+ Lx*0.0
 D = 1
-n = 7
+n = 1
 theta = n*2*np.pi
-eV = 0
+eV = 0.2
 tol = 1e-3
 gamma = 3
 use_kl = True
@@ -71,20 +42,19 @@ max_its = 1
 
 B0 = n*np.pi/((Lx+(0*dx))*(Ly+(0*dx)))
 B_and_bc = np.zeros((Ny+2, Nx+2,2))
-B_and_bc[0,:,0] = n*np.pi/(4*Lx)
-B_and_bc[-1,:,0] = -n*np.pi/(4*Lx)
-B_and_bc[:,0,1] = -n*np.pi/(4*Ly)
-B_and_bc[:,-1,1] = n*np.pi/(4*Ly)
+B_and_bc[0,1:-1,0] = n*np.pi/(4*Lx)
+B_and_bc[-1,1:-1,0] = -n*np.pi/(4*Lx)
+B_and_bc[1:-1,0,1] = -n*np.pi/(4*Ly)
+B_and_bc[1:-1,-1,1] = n*np.pi/(4*Ly)
 B_and_bc[1:-1,1:-1,1] = B0
 
 A = calculate_correct_A_field(B_and_bc, Nx, Ny, dx, dy)[1:-1,1:-1]
 slc = np.max((1, Nx//20))
-#A = np.zeros(A.shape, dtype = float)
-#A = A_field_integrated_usadel( A, x, y, Nx, Ny, dx, dy, B0)
 
-multiplier = 0
+
+
+multiplier = 1
 A*=multiplier
-
 B = np.gradient(A[:,:,0], dx, axis = 0) -  np.gradient(A[:,:,1], dy, axis = 1)
 
 print("Total phase in SC", theta)
@@ -105,8 +75,8 @@ epsilons = np.append(epsilons1,epsilons2)
 
 epsilons_minus = -epsilons
 
-epsilons+= -1j*(1e-2)#*(epsilons<=1)
-epsilons_minus+= -1j*(1e-2)#*(epsilons_minus>=-1)
+epsilons+= 1j*(1e-2)#*(epsilons<=1)
+epsilons_minus+= 1j*(1e-2)#*(epsilons_minus>=-1)
 
 A_delta = np.zeros_like(A)
 old_A_delta = np.ones_like(A)
@@ -137,7 +107,20 @@ while np.linalg.norm(A_delta-old_A_delta)>tol and num_its<max_its:
     print(np.max(A_delta), np.min(A_delta))
     print("Sum", np.sum(A_delta), "Average", np.average(A_delta), "Average abs", np.average(np.abs(A_delta)))
     print("Norm of difference from last iteration:", np.linalg.norm(A_delta-old_A_delta))
+    
 B_induced = np.gradient(A_delta[:,:,0], dx, axis = 0) -  np.gradient(A_delta[:,:,1], dy, axis = 1)
+B_app = np.gradient(A[:,:,0], dx, axis = 0) -  np.gradient(A[:,:,1], dy, axis = 1)
+fig, ax = plt.subplots(2,1, figsize = (20,15))
+ax[0].set_title("Applied magnetic field")
+a = ax[0].pcolormesh(x,y,B_app,cmap='seismic')
+fig.colorbar(a, ax = ax[0])
+ax[1].set_title("Induced magnetic field")
+a = ax[1].pcolormesh(x,y,B_induced,cmap='seismic')
+fig.colorbar(a, ax = ax[1])
+plt.suptitle(f'Magnetic fields for L={Lx}, N={Nx}, eV={eV}')
+#plt.savefig(f'Magnetic fields for surrounded normal metal with phase={2*n} pi L={Lx} N={Nx} eV={eV}.pdf')
+plt.close()
+
 plt.pcolormesh(x,y,B,cmap='seismic')
 plt.colorbar()
 plt.title("Applied magnetic field")
@@ -217,16 +200,41 @@ plt.show()
 
 
 plt.pcolormesh(x,y,abs_corr,cmap='seismic', norm=colors.LogNorm(vmin = np.sort(abs_corr.flatten())[1], vmax = np.max(np.abs(abs_corr))))
-plt.title("Absolute value of pair correlation")
+plt.title("n = " + str(n))
 plt.colorbar()
+if multiplier == 0:
+    plt.savefig(f'..\Plots\Pair corr plots\Amplitude plots\Amplitude of pair correlation with total phase {2*n} pi using N = {Nx}.pdf')
+else:
+    plt.savefig(f'..\Plots\Pair corr plots\Amplitude plots\Amplitude of pair correlation with A field and total phase {2*n} pi using N = {Nx}.pdf')
 plt.show()
 
 phases = np.arctan(pair_corr.imag/pair_corr.real)  
 a = int(np.round(theta/np.pi))
 plt.pcolormesh(x,y,phases,cmap='seismic',vmin = np.min(phases), vmax = np.max(phases))
-plt.title(f"Phase of pair correlation with total phase {a} $\pi$")
+plt.title("n = " + str(n))
 plt.colorbar()
-plt.savefig(f'.\Phase plots\Phase of pair correlation with total phase {a} pi using N = {Nx}.pdf')
+if multiplier == 0:
+    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with total phase {2*n} pi using N = {Nx}.pdf')
+else:
+    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with A field and total phase {2*n} pi using N = {Nx}.pdf')
+plt.show()
+
+plt.pcolormesh(x,y,phases, cmap = 'plasma',vmin = np.min(phases), vmax = np.max(phases))
+plt.title("n = " + str(n))
+plt.colorbar()
+plt.show()
+
+phases2 = np.arctan2(pair_corr.imag,pair_corr.real)  
+a = int(np.round(theta/np.pi))
+plt.pcolormesh(x,y,phases,cmap='cividis',vmin = np.min(phases), vmax = np.max(phases))
+plt.title("n = " + str(n))
+plt.colorbar()
+"""
+if multiplier == 0:
+    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with arctan2 with total phase {a} pi using N = {Nx}.pdf')
+else:
+    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with arctan2 with A field and total phase {a} pi using N = {Nx}.pdf')
+"""
 plt.show()
 # print profiling output
 #stats = pstats.Stats(prof).strip_dirs().sort_stats("cumtime")

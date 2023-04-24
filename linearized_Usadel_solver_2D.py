@@ -56,7 +56,7 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps, D=1, e_=-1
     diag = np.zeros((diag_y_shape,diag_x_shape), dtype = complex)       
     
     #All points excluding the ghost points follow normal finite difference scheme
-    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 1j*2*(eps)/D -  4*e_*np.sum(A*A, axis = 2)) 
+    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)   +  4*e_**2*np.sum(A*A, axis = 2)) + 1j*2*(eps)/D
     #The ghost points at the end are different due to boundary conditions
     diag[0,:] = 1/(2*dy)
     diag[-1,:] = 1/(2*dy)
@@ -215,7 +215,7 @@ def get_Usadel_solution(epsilons_fun, f_sols_f,f_grads_f, bc_fun, x, y, dx, dy, 
     Ny = y.shape[0]
     #Loop through all energies to solve the linearized Usadel equation for
     #tqdm creates a progressbar to see how far in the simulation one has gotten
-    for i in range(epsilons_fun.shape[0]):
+    for i in tqdm(range(epsilons_fun.shape[0])):
         #Create the matrix describing the finite difference version of the linearized Usadel
         #equation where the lhs contains all coefficents in front of the various f_ij
         #using ghost points so the boundary conditions are also included
@@ -274,14 +274,14 @@ def update_A_field(x_grid, y_grid, x_current, y_current, dx, dy, mu_0 = 1):
             distances = np.sqrt((x_grid[i,j]-x_grid)**2+(y_grid[i,j]-y_grid)**2)
             #Set the smallest distance which should be zero equal to the second smallest 
             #distance. This is done to avoid infinities when dividing by the distance
-            distances[distances==0.0] = np.min(distances + (distances==0)*np.max(distances))
+            distances[distances==0.0] = np.inf #np.min(distances + (distances==0)*np.max(distances))
             #Calculate the inverse of the distance
             inverse_distances = 1/distances
             #Calculate the contribution to the A-field in the x and y direction using 
             #Maxwells equations. The multiplication with dx and dy is to take into account
             #that we are integrating
-            delta_A[i,j,0] = mu_0/(4*np.pi) * np.trapz(np.trapz(x_current/inverse_distances, x=x_grid[0], axis = 1), x = y_grid[:,0])
-            delta_A[i,j,1] = mu_0/(4*np.pi) * np.trapz(np.trapz(y_current/inverse_distances, x=x_grid[0], axis = 1), x = y_grid[:,0])
+            delta_A[i,j,0] = mu_0/(4*np.pi) * np.trapz(np.trapz(x_current*inverse_distances, x=x_grid[0], axis = 1), x = y_grid[:,0])
+            delta_A[i,j,1] = mu_0/(4*np.pi) * np.trapz(np.trapz(y_current*inverse_distances, x=x_grid[0], axis = 1), x = y_grid[:,0])
             
             """delta_A[i,j,0] = mu_0/(4*np.pi) * np.sum(x_current/inverse_distances)*dx*dy
             delta_A[i,j,1] = mu_0/(4*np.pi) * np.sum(y_current/inverse_distances)*dx*dy"""
@@ -435,7 +435,7 @@ def ghost_two_d_integrated_difference_matrix_usadel(x, y, dx, dy, A, eps, D=1, e
     #Create the diagonal of the matrix and fill it with the proper values
     diag = np.zeros((diag_y_shape,diag_x_shape), dtype = complex)       
     #All points excluding the ghost points follow normal finite difference scheme
-    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)  + 1j*2*(eps)/D -  4*e_*np.sum(A*A, axis = 2)) 
+    diag[1:-1,1:-1] = -(2/(dx**2) + 2/(dy**2)   +  4*e_**2*np.sum(A*A, axis = 2)) + 1j*2*(eps)/D
 
     if core_locs[0,0]!=None and include_gbcs:
             delta = 1

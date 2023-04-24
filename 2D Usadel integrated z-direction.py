@@ -270,10 +270,10 @@ def A_field_integrated_usadel(core_locs, A, x, y, Nx, Ny, dx, dy, threshold = 1,
 #prof.enable()
 
 #Set parameters for the run
-Nx = 101
+Nx = 100
 Ny = Nx
 e_ = -1
-Lx = 30
+Lx = 20
 Ly = Lx
 Lz = 1
 D = 1
@@ -286,30 +286,26 @@ include_gbcs = False
 kappa = 2.71
 nu = 0.8
 
-eV = 1/np.sqrt(2)
+eV = 0
 x,dx = np.linspace(-Lx/2,Lx/2,Nx,retstep = True)
 y, dy = np.linspace(-Ly/2,Ly/2,Ny,retstep = True)
 xv, yv = np.meshgrid(x,y)
 
+"""
+Lx2 = 70
+Ly2 = Lx2
 
-"""vortex_core_dist = 4.5
+vortex_core_dist = 12
 long_axis_dist = np.sin(np.pi/3) * vortex_core_dist
 short_axis_dist = np.sin(np.pi/6) * vortex_core_dist
 #vortex_core_dist = 1.075 * np.sqrt(np.abs(np.pi/B_applied))
+core_locs = []
 
-
-
-
-
-
-
-"""
-"""
-for i in range(int((Lx//2)//long_axis_dist)+1):
-    for j in range(int((Ly//2)//vortex_core_dist)+1):
+for i in range(int((Lx2//2)//long_axis_dist)+1):
+    for j in range(int((Ly2//2)//vortex_core_dist)+1):
         if i == 0 and j == 0:
             core_locs.append([0,0])
-        elif (j*vortex_core_dist + (i%2)*short_axis_dist + threshold)>Lx/2:
+        elif (j*vortex_core_dist + (i%2)*short_axis_dist + threshold)>Lx2/2:
             pass
         elif j==0 and i%2==1:
             core_locs.append([j*vortex_core_dist + (i%2)*short_axis_dist, i * long_axis_dist])
@@ -328,11 +324,16 @@ for i in range(int((Lx//2)//long_axis_dist)+1):
             core_locs.append([-(j*vortex_core_dist + (i%2)*short_axis_dist), i * long_axis_dist])
             core_locs.append([j*vortex_core_dist + (i%2)*short_axis_dist, -i * long_axis_dist])
             core_locs.append([-(j*vortex_core_dist + (i%2)*short_axis_dist), -i * long_axis_dist])
-print(core_locs)
+
 print(len(core_locs))
+
 core_locs = np.array(core_locs)
-"""
-"""
+print(np.where(core_locs[:,0]==np.max(core_locs[:,0])))
+
+core_locs = np.delete(core_locs, np.where(core_locs[:,0]==np.max(core_locs[:,0])),0)
+core_locs = np.delete(core_locs, np.where(core_locs[:,0]==np.max(core_locs[:,0])),0)
+core_locs[:,0] += vortex_core_dist/2
+
 core_locs = np.zeros((23,2))
 for i in range(6):
     core_locs[i,0] = np.cos(i*2*np.pi/6)*np.max(x)*5/12
@@ -344,7 +345,7 @@ for i in range(6):
 for i in range(4):
     core_locs[i+18,0] =  np.max(x)*10/12 * np.sign((i%2-1/2))
     core_locs[i+18,1] =  np.max(x)*10/12 * np.sin(1*np.pi/3) * np.sign(((i/3)%2-1/2))
-"""
+
 
 #Specify the center of the superconducting vortices 
 core_locs = np.zeros((7,2))
@@ -352,15 +353,13 @@ for i in range(6):
     core_locs[i,0] = np.cos(i*2*np.pi/6)*np.max(x)*5/6
     core_locs[i,1] = np.sin(i*2*np.pi/6)*np.max(y)*5/6
 
-#core_locs = np.zeros((1,2))
-
 plt.scatter(core_locs[:,0], core_locs[:,1])
-plt.xlim(np.min(x), np.max(x))
-plt.ylim(np.min(y), np.max(y))
+#plt.xlim(np.min(x), np.max(x))
+#plt.ylim(np.min(y), np.max(y))
 plt.grid()
 plt.show()
-
-#core_locs = np.zeros((1,2))
+"""
+core_locs = np.zeros((1,2))
 
 #Calculate the phase of the superconductor by adding the phase from each superconducting vortex
 theta = 0
@@ -382,6 +381,7 @@ A*=multiplier
 plt.plot(x, A[Ny//2,:,0], label = "Ax")
 plt.plot(x, A[Ny//2,:,1], label = "Ay")
 plt.grid()
+plt.legend()
 plt.show()
 
 
@@ -473,6 +473,10 @@ div_current_y = current_y[:-2]- current_y[2:]
 plt.quiver(x[slc//2::slc],y[slc//2::slc],current_x[slc//2::slc,slc//2::slc].real, current_y[slc//2::slc,slc//2::slc].real)
 plt.scatter(0,0)
 plt.title("Supercurrent")
+plt.show()
+plt.quiver(x[slc//2::slc],y[slc//2::slc],current_x_no_A[slc//2::slc,slc//2::slc].real, current_y_no_A[slc//2::slc,slc//2::slc].real)
+plt.scatter(0,0)
+plt.title("Supercurrent without A field")
 plt.show()
 
 plt.quiver(x[slc//2::slc],y[slc//2::slc],(current_x[slc//2::slc,slc//2::slc].real*0+1), (current_y[slc//2::slc,slc//2::slc].real*0+1), angles = (np.arctan2(current_y[slc//2::slc,slc//2::slc].real, current_x[slc//2::slc,slc//2::slc].real)*180.0/np.pi))
@@ -606,19 +610,7 @@ plt.colorbar()
 plt.title("Circulation of current")
 plt.show()
 
-N_from_center = 80
-plt.pcolormesh(xv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center],yv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center],circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center], cmap = 'seismic', vmin = -np.max(np.abs(circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center])), vmax = np.max(np.abs(circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center])))
-plt.colorbar()
-plt.title("Circulation of current")
-plt.show()
 
-
-
-
-plt.pcolormesh(xv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center],yv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center],circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center], cmap = 'seismic', vmin = -np.max(np.abs(circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center])), vmax = np.max(np.abs(circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center])))
-plt.colorbar()
-plt.title("Circulation of current")
-plt.show()
 
 plt.plot(x[Nx//2:],abs_corr[Ny//2, Nx//2:], label = "Pair corr")
 psi_0 = abs_corr[Ny//2, -1]
