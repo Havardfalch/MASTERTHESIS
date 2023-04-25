@@ -481,6 +481,11 @@ def ghost_two_d_integrated_difference_matrix_usadel(x, y, dx, dy, A, eps, D=1, e
     bottom_bc_diag[0,1:-1] = 1/(2*dy)
     right_bc_diag[1:-1,-1] = -1/(2*dx)
     left_bc_diag[1:-1,0] = 1/(2*dx)
+    
+    lowlow_diag[-1,1:-1] = -2j*e_*A[-1,:, 1]
+    upup_diag[0,1:-1] = -2j*e_*A[0,:, 1]
+    upper_diag[1:-1,0] = -2j*e_*A[:,0,0]
+    lower_diag[1:-1,-1] = -2j*e_*A[:,-1,0]
 
     
     #Reshape all arrays to be one dimensional and fix them to be the proper length

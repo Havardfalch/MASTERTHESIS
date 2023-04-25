@@ -24,15 +24,15 @@ t1 = time.time()
 
 
 
-Nx = 200
+Nx = 101
 Ny = Nx
 e = -1
-Lx = 4
-Ly = Lx+ Lx*0.0
+Lx = 12
+Ly = Lx
 D = 1
 n = 1
 theta = n*2*np.pi
-eV = 0.2
+eV = 0
 tol = 1e-3
 gamma = 3
 use_kl = True
@@ -56,6 +56,7 @@ slc = np.max((1, Nx//20))
 multiplier = 1
 A*=multiplier
 B = np.gradient(A[:,:,0], dx, axis = 0) -  np.gradient(A[:,:,1], dy, axis = 1)
+
 
 print("Total phase in SC", theta)
 if use_kl:
@@ -148,10 +149,11 @@ plt.colorbar()
 plt.title("Current in y-direction")
 plt.show()
 
-slc = int(Nx//20)
+slc = np.max((1,int(Nx//20)))
 plt.quiver(x[slc//2::slc],y[slc//2::slc],current_x[slc//2::slc,slc//2::slc].real, current_y[slc//2::slc,slc//2::slc].real)
 plt.scatter(0,0)
-plt.title("Supercurrent")
+plt.title(f'n={n}')
+plt.savefig(f'..\Plots\SSNSS\Current plots\Quiverplot of current with total phase {2*n} pi, eV = {eV}, N = {Nx}, L = {Lx}.pdf')
 plt.show()
 
 plt.quiver(x[slc//2::slc],y[slc//2::slc],(current_x[slc//2::slc,slc//2::slc].real*0+1), (current_y[slc//2::slc,slc//2::slc].real*0+1), angles = (np.arctan2(current_y[slc//2::slc,slc//2::slc].real, current_x[slc//2::slc,slc//2::slc].real)*180.0/np.pi))
@@ -160,6 +162,11 @@ plt.title("Direction of supercurrent")
 plt.show()
 
 plt.quiver(x[slc//2::slc],y[slc//2::slc],(A) [slc//2::slc,slc//2::slc,0], (A)[slc//2::slc,slc//2::slc,1])
+plt.scatter(0,0)
+plt.title("Applied magnetic vector potential")
+plt.show()
+
+plt.streamplot(x,y,(A) [:,:,0], (A)[:,:,1])
 plt.scatter(0,0)
 plt.title("Applied magnetic vector potential")
 plt.show()
@@ -203,9 +210,9 @@ plt.pcolormesh(x,y,abs_corr,cmap='seismic', norm=colors.LogNorm(vmin = np.sort(a
 plt.title("n = " + str(n))
 plt.colorbar()
 if multiplier == 0:
-    plt.savefig(f'..\Plots\Pair corr plots\Amplitude plots\Amplitude of pair correlation with total phase {2*n} pi using N = {Nx}.pdf')
+    plt.savefig(f'..\Plots\SSNSS\Pair corr plots\Amplitude plots\Amplitude of pair correlation with total phase {2*n} pi using N = {Nx}.pdf')
 else:
-    plt.savefig(f'..\Plots\Pair corr plots\Amplitude plots\Amplitude of pair correlation with A field and total phase {2*n} pi using N = {Nx}.pdf')
+    plt.savefig(f'..\Plots\SSNSS\Pair corr plots\Amplitude plots\Amplitude of pair correlation with A field and total phase {2*n} pi, eV = {eV}, N = {Nx}, L = {Lx}.pdf')
 plt.show()
 
 phases = np.arctan(pair_corr.imag/pair_corr.real)  
@@ -214,9 +221,9 @@ plt.pcolormesh(x,y,phases,cmap='seismic',vmin = np.min(phases), vmax = np.max(ph
 plt.title("n = " + str(n))
 plt.colorbar()
 if multiplier == 0:
-    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with total phase {2*n} pi using N = {Nx}.pdf')
+    plt.savefig(f'..\Plots\SSNSS\Pair corr plots\Phase plots\Phase of pair correlation with total phase {2*n} pi using N = {Nx}.pdf')
 else:
-    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with A field and total phase {2*n} pi using N = {Nx}.pdf')
+    plt.savefig(f'..\Plots\SSNSS\Pair corr plots\Phase plots\Phase of pair correlation with A field and total phase {2*n} pi, eV = {eV}, N = {Nx}, L = {Lx}.pdf')
 plt.show()
 
 plt.pcolormesh(x,y,phases, cmap = 'plasma',vmin = np.min(phases), vmax = np.max(phases))
@@ -231,9 +238,9 @@ plt.title("n = " + str(n))
 plt.colorbar()
 """
 if multiplier == 0:
-    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with arctan2 with total phase {a} pi using N = {Nx}.pdf')
+    plt.savefig(f'..\Plots\SSNSS\Pair corr plots\Phase plots\Phase of pair correlation with arctan2 with total phase {a} pi using N = {Nx}.pdf')
 else:
-    plt.savefig(f'..\Plots\Pair corr plots\Phase plots\Phase of pair correlation with arctan2 with A field and total phase {a} pi using N = {Nx}.pdf')
+    plt.savefig(f'..\Plots\SSNSS\Pair corr plots\Phase plots\Phase of pair correlation with arctan2 with A field and total phase {a} pi using N = {Nx}.pdf')
 """
 plt.show()
 # print profiling output
@@ -244,6 +251,8 @@ xv, yv = np.meshgrid(x,y)
 plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
 plt.colorbar()
 plt.title("Streamplot og current")
+plt.savefig(f'..\Plots\SSNSS\Current plots\Streamplot of current with total phase {2*n} pi, eV = {eV}, N = {Nx}, L = {Lx}.pdf')
+plt.show()
 plt.show()
 
 t2 = time.time()
