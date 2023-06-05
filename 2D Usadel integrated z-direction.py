@@ -16,18 +16,8 @@ from scipy import integrate as spint
 from scipy import special as spspecial
 from linearized_Usadel_solver_2D import get_integrated_3d_Usadel_solution, update_A_field
 from Boundary_conditions_for_linearized_Usadel import f_integrated_z_direction
-import time
 from tqdm import tqdm
-
-
-
 from joblib import Parallel, delayed
-
-
-import cProfile as profile
-import pstats
-t1 = time.time()
- 
 
 
 def int_func_for_A_x(t,x,y,lambd, threshold = 1, kappa=2.71, phi_0 = -np.pi):
