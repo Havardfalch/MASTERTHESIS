@@ -11,7 +11,7 @@ Created on Tue Mar 14 13:46:25 2023
 @author: Havard
 """
 
-from numpy import zeros, reshape, sum, meshgrid, sqrt, cosh, sinh, tanh, arctanh, zeros_like, array, exp, pi, log, linspace, sign, abs, append, arctan2, max, conjugate, cos, sin, where, gradient, min, inf, save
+from numpy import sqrt, pi, abs, arctan2, max, conjugate, cos, where, gradient, min, save
 import numpy as np
 
 from scipy.integrate import trapz
