@@ -94,8 +94,8 @@ def ghost_two_d_difference_matrix_usadel_neuman(x, y, dx, dy, A, eps, D=1, e_=-1
         top_bc_diag[-1,1:-1] = -1/(2*dy)
         bottom_bc_diag[0,1:-1] = 1/(2*dy)
         right_bc_diag[1:-1,-1] = -1/(2*dx)
-        left_bc_diag[1:-1,0] = 1/(2*dx)
-    
+        left_bc_diag[1:-1,0] = 1/(2*dx)    
+
     #Reshape all arrays to be one dimensional and fix them to be the proper length
     #The arrays to the rights ot the diagonal remove values from the end of the array while
     #arrays to the left remove from the start. This is since arrays to the right represent
@@ -266,8 +266,8 @@ def update_A_field(x_grid, y_grid, x_current, y_current, dx, dy, mu_0 = 1):
     #Create an arary to store the A field induced by the currents with the same shape as 
     #the system and space to save both the x and y component
     delta_A = np.zeros((x_current.shape[0], x_current.shape[1], 2), dtype = float)
-    #Loop through the indices for the y-coordinat.
-    for i in range(x_current.shape[0]):
+    #Loop through the indices for the y-coordinate, tqdm creates a progressbar.
+    for i in tqdm(range(x_current.shape[0])):
         #Loop through the indices of the x-coordinate
         for j in range(x_current.shape[1]):
             #Calculate the square of the distance from a grid point to all other grid points
@@ -506,3 +506,4 @@ def ghost_two_d_integrated_difference_matrix_usadel(x, y, dx, dy, A, eps, D=1, e
     difference_matrix = sparse.diags((diag,upper_diag,lower_diag, upup_diag, lowlow_diag, top_bc_diag, bottom_bc_diag, right_bc_diag, left_bc_diag), 
                                      [0, 1, -1, diag_x_shape, -diag_x_shape, -2*diag_x_shape, 2*diag_x_shape, -2, 2])
     return difference_matrix
+

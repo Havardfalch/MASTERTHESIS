@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate as spint
 from scipy import special as spspecial
-from linearized_Usadel_solver_2D import get_integrated_3d_Usadel_solution
+from linearized_Usadel_solver_2D import get_integrated_3d_Usadel_solution, update_A_field
 from Boundary_conditions_for_linearized_Usadel import f_integrated_z_direction
 import time
 from tqdm import tqdm
@@ -98,12 +98,6 @@ def int_func_for_A_y(t,x,y,lambd, threshold = 1, kappa=2.71, phi_0 = -np.pi):
     else:
         return -t*x*phi_0/(2*np.pi*lambd**2) * spspecial.kn(0, np.sqrt((t*x)**2+(t*y)**2)/lambd) * np.log(kappa)/spspecial.kn(0,threshold/lambd)
 
-def B_strength(x,y,lambd, threshold = 1, kappa=1, phi_0 = -np.pi):
-    if np.sqrt(x**2+y**2)<=threshold:
-        return -np.log(kappa)*phi_0/(2*np.pi*lambd**2)
-    else:
-        return -phi_0/(2*np.pi*lambd**2) * spspecial.kn(0, np.sqrt((x)**2+(y)**2)/lambd) * np.log(kappa)/spspecial.kn(0,threshold/lambd)
-
 def A_field_integrated_usadel_parallel_call(i,core_locs, A, x, y, Nx, Ny, dx, dy, threshold = 1, kappa = 2.71, phi_0 = -np.pi, ksi = 1):
     """
     Helper function for calculating the magnetic vector potential from the magnetic field using Poincare's lemma.
@@ -150,18 +144,29 @@ def A_field_integrated_usadel_parallel_call(i,core_locs, A, x, y, Nx, Ny, dx, dy
         [:,:,0] components are the x-compontents while [:,:,1] are the y-components.
     
     """
-    B = np.zeros_like(A)
+    #Create an array to store the vector potential in
+    A_new = np.zeros_like(A)
+    
+    #Create a mesh of the grid points
     xv,yv = np.meshgrid(x,y)
+    
+    #Calculate lambda
     lambd = kappa*ksi
     
+    #Loop over the x coordinates
     for j in range(xv.shape[1]):
+        #Loop over the vortices in the normal metal
         for k in range(core_locs.shape[0]):
+            #Calculate the x-distance from the center of the vortex
             x_rel = xv[i,j]-core_locs[k,0]
+            #Calculate the y-distance from the center of the vortex
             y_rel = yv[i,j]-core_locs[k,1]
             
-            B[i,j,0] += spint.quad(int_func_for_A_x,0,1, args = (x_rel, y_rel, lambd, threshold, kappa, phi_0))[0]
-            B[i,j,1] += spint.quad(int_func_for_A_y,0,1, args = (x_rel, y_rel, lambd, threshold, kappa, phi_0))[0]
-    return B
+            #Calculate the contribution to x component of the vector potential from one vortex at one gridpoint
+            A_new[i,j,0] += spint.quad(int_func_for_A_x,0,1, args = (x_rel, y_rel, lambd, threshold, kappa, phi_0))[0]
+            #Calculate the contribution to y component of the vector potential from one vortex at one gridpoint
+            A_new[i,j,1] += spint.quad(int_func_for_A_y,0,1, args = (x_rel, y_rel, lambd, threshold, kappa, phi_0))[0]
+    return A_new
 
 def A_field_integrated_usadel_parallel(core_locs, A, x, y, Nx, Ny, dx, dy, threshold = 1, kappa = 2.71, phi_0 = -np.pi, ksi = 1):
     """
@@ -253,24 +258,31 @@ def A_field_integrated_usadel(core_locs, A, x, y, Nx, Ny, dx, dy, threshold = 1,
         [:,:,0] components are the x-compontents while [:,:,1] are the y-components.
 
     """
+    #Create a mesh of the grid points
     xv,yv = np.meshgrid(x,y)
+    #Calculate lambda
     lambd = kappa*ksi
+    #Loop over the y coordinates, tqdm creates a progressbar
     for i in tqdm(range(xv.shape[0])):
+        #Loop over the x coordinates
         for j in range(xv.shape[1]):
+            #Loop over the vortices in the normal metal
             for k in range(core_locs.shape[0]):
+                #Calculate the x-distance from the center of the vortex
                 x_rel = xv[i,j]-core_locs[k,0]
+                #Calculate the y-distance from the center of the vortex
                 y_rel = yv[i,j]-core_locs[k,1]
                 
+                #Calculate the contribution to x component of the vector potential from one vortex at one gridpoint
                 A[i,j,0] += spint.quad(int_func_for_A_x,0,1, args = (x_rel, y_rel, lambd, threshold, kappa, phi_0))[0]
+                #Calculate the contribution to y component of the vector potential from one vortex at one gridpoint
                 A[i,j,1] += spint.quad(int_func_for_A_y,0,1, args = (x_rel, y_rel, lambd, threshold, kappa, phi_0))[0]
-                
     return A
 
-#prof = profile.Profile()
-#prof.enable()
+
 
 #Set parameters for the run
-Nx = 100
+Nx = 400
 Ny = Nx
 e_ = -1
 Lx = 20
@@ -278,7 +290,6 @@ Ly = Lx
 Lz = 1
 D = 1
 G_T = 0.3
-#Endre denne 
 G_N = 1
 
 threshold = 1
@@ -291,13 +302,16 @@ x,dx = np.linspace(-Lx/2,Lx/2,Nx,retstep = True)
 y, dy = np.linspace(-Ly/2,Ly/2,Ny,retstep = True)
 xv, yv = np.meshgrid(x,y)
 
+sign = -1
+
 """
+#Create the vortex pattern for 7 vortices in a larger lattice with 105 vortices
 Lx2 = 70
 Ly2 = Lx2
 
-vortex_core_dist = 12
-long_axis_dist = np.sin(np.pi/3) * vortex_core_dist
-short_axis_dist = np.sin(np.pi/6) * vortex_core_dist
+vortex_core_dist = (Lx/2)*3/4
+long_axis_dist = sin(pi/3) * vortex_core_dist
+short_axis_dist = sin(pi/6) * vortex_core_dist
 #vortex_core_dist = 1.075 * np.sqrt(np.abs(np.pi/B_applied))
 core_locs = []
 
@@ -324,47 +338,40 @@ for i in range(int((Lx2//2)//long_axis_dist)+1):
             core_locs.append([-(j*vortex_core_dist + (i%2)*short_axis_dist), i * long_axis_dist])
             core_locs.append([j*vortex_core_dist + (i%2)*short_axis_dist, -i * long_axis_dist])
             core_locs.append([-(j*vortex_core_dist + (i%2)*short_axis_dist), -i * long_axis_dist])
-
 print(len(core_locs))
+core_locs = array(core_locs)
 
-core_locs = np.array(core_locs)
-print(np.where(core_locs[:,0]==np.max(core_locs[:,0])))
-
-core_locs = np.delete(core_locs, np.where(core_locs[:,0]==np.max(core_locs[:,0])),0)
-core_locs = np.delete(core_locs, np.where(core_locs[:,0]==np.max(core_locs[:,0])),0)
-core_locs[:,0] += vortex_core_dist/2
-
+#Create vortex pattern for 23 vortices in the normal metal
 core_locs = np.zeros((23,2))
 for i in range(6):
-    core_locs[i,0] = np.cos(i*2*np.pi/6)*np.max(x)*5/12
-    core_locs[i,1] = np.sin(i*2*np.pi/6)*np.max(y)*5/12
+    core_locs[i,0] = np.cos(i*2*np.pi/6)*np.max(x)*3/8
+    core_locs[i,1] = np.sin(i*2*np.pi/6)*np.max(y)*3/8
 for i in range(6):
     for j in range(2):
-        core_locs[2*i+j+6,0] = np.cos(i*2*np.pi/6)*np.max(x)*5/12 + np.cos((i+j)*2*np.pi/6)*np.max(x)*5/12
-        core_locs[2*i+j+6,1] = np.sin(i*2*np.pi/6)*np.max(y)*5/12 + np.sin((i+j)*2*np.pi/6)*np.max(y)*5/12
+        core_locs[2*i+j+6,0] = np.cos(i*2*np.pi/6)*np.max(x)*3/8 + np.cos((i+j)*2*np.pi/6)*np.max(x)*3/8
+        core_locs[2*i+j+6,1] = np.sin(i*2*np.pi/6)*np.max(y)*3/8 + np.sin((i+j)*2*np.pi/6)*np.max(y)*3/8
 for i in range(4):
-    core_locs[i+18,0] =  np.max(x)*10/12 * np.sign((i%2-1/2))
-    core_locs[i+18,1] =  np.max(x)*10/12 * np.sin(1*np.pi/3) * np.sign(((i/3)%2-1/2))
+    core_locs[i+18,0] =  np.max(x)*6/8 * np.sign((i%2-1/2))
+    core_locs[i+18,1] =  np.max(x)*6/8 * np.sin(1*np.pi/3) * np.sign(((i/3)%2-1/2))
 
-
-#Specify the center of the superconducting vortices 
+#Create the vortex pattern for 7 vortices in the normal metal
 core_locs = np.zeros((7,2))
 for i in range(6):
-    core_locs[i,0] = np.cos(i*2*np.pi/6)*np.max(x)*5/6
-    core_locs[i,1] = np.sin(i*2*np.pi/6)*np.max(y)*5/6
+    core_locs[i,0] = np.cos(i*2*np.pi/6)*np.max(x)*3/4
+    core_locs[i,1] = np.sin(i*2*np.pi/6)*np.max(y)*3/4
 
-plt.scatter(core_locs[:,0], core_locs[:,1])
-#plt.xlim(np.min(x), np.max(x))
-#plt.ylim(np.min(y), np.max(y))
-plt.grid()
-plt.show()
 """
+
+#Create a single isolated vortex
 core_locs = np.zeros((1,2))
+
+#Find the number of vortices
+num_cores = core_locs.shape[0]
 
 #Calculate the phase of the superconductor by adding the phase from each superconducting vortex
 theta = 0
 for i in range(core_locs.shape[0]):
-    theta += np.arctan2(yv-core_locs[i,1], xv-core_locs[i,0])
+    theta += sign * np.arctan2(yv-core_locs[i,1], xv-core_locs[i,0])
 #Fix the phase in the range[0,2*pi)
 theta = theta%(2*np.pi)
 
@@ -378,40 +385,7 @@ slc = np.max((1, Nx//20))
 multiplier = 1 * np.sign(np.log(kappa))
 A*=multiplier
 
-plt.plot(x, A[Ny//2,:,0], label = "Ax")
-plt.plot(x, A[Ny//2,:,1], label = "Ay")
-plt.grid()
-plt.legend()
-plt.show()
 
-
-B = ((A[1:-1,2:,1]-A[1:-1,:-2,1])/(2*dx) +(A[:-2, 1:-1, 0]- A[2:,1:-1,0])/(2*dy))
-
-#Plotting to be removed at some point, just to see the form at y=0
-B_strength_vec = np.vectorize(B_strength)
-B_exact = B_strength_vec(x, y[Ny//2], kappa, threshold, kappa)*np.sign(np.log(kappa))
-B_exact *= np.max(B)/np.max(B_exact)
-plt.plot(x, B_exact, label =  "Exact form")
-plt.plot(x[1:-1], B[Ny//2], label = "Finite difference form")
-plt.title("B field at y = " + str(y[Ny//2]))
-plt.legend()
-plt.grid()
-plt.show()
-
-#Calculate the divergence of the magnetic field, this should be 0
-div = ((A[1:-1,2:,0]-A[1:-1,:-2,0])/(2*dx) - (A[:-2, 1:-1, 1]- A[2:,1:-1,1])/(2*dy))
-
-#Printing information to keep track of what parameters were used, should be removed at some point
-print("Max B", np.max(B), "Min B", np.min(B))
-print("Max div", np.max(np.abs(div)))
-print("Applied voltage", eV)
-print("Size in x:", Lx, "Points in x:", Nx, "Size in y:", Ly, "Points in y:", Ny)
-print("Max of A", np.max(np.linalg.norm(A, axis = 2)), "Multiplier", multiplier)
-print("Kappa", kappa, "Nu", nu, "G_T", G_T)
-if include_gbcs:
-    print("Using g_bcs term")
-else:
-    print("Not using g_bcs term")
     
 #Create an array with all the energies to solve for, we also need the negative energies
 epsilons1 = np.linspace(eV,2,300,dtype = complex)
@@ -451,177 +425,320 @@ abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
 #Find the difference in the phase in the currents and the superconducting vortex to more easily see if the current is reversed
 circulating_current = abs_current*np.cos((theta - np.arctan2(-current_x, current_y)))
 
-#Calculate the current if the A-field part is removed. This should be taken away
-current_x_no_A = e_*spint.trapz((f_sols*np.conjugate(f_grads_minus[:,:,:,0])- f_sols_minus*np.conjugate(f_grads[:,:,:,0]) ).real, x = epsilons, axis = 0).real
-current_y_no_A = e_*spint.trapz((f_sols*np.conjugate(f_grads_minus[:,:,:,1])- f_sols_minus*np.conjugate(f_grads[:,:,:,1]) ).real, x = epsilons, axis = 0).real
+#Calculate the A and B fields induced by the supercurrents
+A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
+B_induced = np.gradient(A_delta[:,:,1], dx, axis = 1) -  np.gradient(A_delta[:,:,0], dy, axis = 0)
 
-abs_current_no_A = np.sqrt((current_x_no_A.real)**2+(current_y_no_A.real)**2)
-circulating_current_no_A = abs_current*np.cos((theta - np.arctan2(-current_x_no_A, current_y_no_A)%(2*np.pi))%(2*np.pi))
+#Calculate the applied B field
+B_app = np.gradient(A[:,:,1], dx, axis = 1) -  np.gradient(A[:,:,0], dy, axis = 0)
+
+#Save data
+np.save(f"Applied B field for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", B_app)
+np.save(f"x current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_x)
+np.save(f"y current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_y)
+
+#Set the font size for plotting
+plt.rcParams.update({'font.size': 20})
 
 
-print("Max inverted current", np.min(circulating_current))
-
-#prof.disable()
-
-#☺
-#Calculate the divergence of the current
-div_current_x = current_x[:,:-2]- current_x[:,2:]
-div_current_y = current_y[:-2]- current_y[2:]
-
-#Plots of lots of different stuff
-
-plt.quiver(x[slc//2::slc],y[slc//2::slc],current_x[slc//2::slc,slc//2::slc].real, current_y[slc//2::slc,slc//2::slc].real)
-plt.scatter(0,0)
-plt.title("Supercurrent")
-plt.show()
-plt.quiver(x[slc//2::slc],y[slc//2::slc],current_x_no_A[slc//2::slc,slc//2::slc].real, current_y_no_A[slc//2::slc,slc//2::slc].real)
-plt.scatter(0,0)
-plt.title("Supercurrent without A field")
-plt.show()
-
-plt.quiver(x[slc//2::slc],y[slc//2::slc],(current_x[slc//2::slc,slc//2::slc].real*0+1), (current_y[slc//2::slc,slc//2::slc].real*0+1), angles = (np.arctan2(current_y[slc//2::slc,slc//2::slc].real, current_x[slc//2::slc,slc//2::slc].real)*180.0/np.pi))
-plt.scatter(0,0)
-plt.title("Direction of supercurrent")
-plt.show()
-
-plt.quiver(x[slc//2::slc],y[slc//2::slc],(A) [slc//2::slc,slc//2::slc,0], (A)[slc//2::slc,slc//2::slc,1])
-plt.scatter(0,0)
-plt.title("Applied magnetic vector potential")
-plt.show()
-
-plt.pcolormesh(x[1:-1],y[1:-1],B,cmap='seismic', vmin = np.min(B), vmax = np.max(B))
+#Plot the applied magnetic field
+plt.pcolormesh(x,y,B_app,cmap='RdYlBu_r', vmin = -np.max(abs(B_app)), vmax = np.max(abs(B_app)))
 plt.colorbar()
-plt.title("Magnetic field")
-plt.show()
 
-plt.pcolormesh(x[1:-1],y[1:-1], np.sqrt(div_current_x.real[1:-1]**2 + div_current_y.real[:,1:-1]**2),cmap='seismic')
-plt.colorbar()
-plt.title("Divergence of current")
-plt.show()
+plt.title('Applied magnetic field')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Applied magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Applied magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
 
-plt.pcolormesh(x,y,abs_current, cmap = 'seismic')
-plt.colorbar()
-plt.title("Absolute value of current")
-plt.show()
+plt.close()
 
-plt.pcolormesh(x,y,circulating_current, cmap = 'seismic', vmin = -np.max(np.abs(circulating_current)), vmax = np.max(np.abs(circulating_current)))
+#Plot the induced magnetic field
+plt.pcolormesh(x,y,B_induced,cmap='RdYlBu_r', vmin = -np.max(abs(B_induced)), vmax = np.max(abs(B_induced)))
 plt.colorbar()
-plt.title("Circulation of current")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
 
-plt.pcolormesh(x,y,circulating_current, cmap = 'tab20', vmin = -np.max(np.abs(circulating_current)), vmax = np.max(np.abs(circulating_current)))
-plt.colorbar()
-plt.title("Circulation of current")
-plt.show()
-"""
-plt.pcolormesh(x,y,abs_current,norm=colors.LogNorm(vmin=np.sort(abs_current.flatten())[1], vmax=np.max(abs_current)), cmap = 'seismic')
-plt.colorbar()
-plt.title("Absolute value of current")
-plt.show()
-"""
-plt.pcolormesh(x,y,abs_corr,cmap='seismic',vmin = np.sort(abs_corr.flatten())[1], vmax = np.max(np.abs(abs_corr)))
-plt.title("Absolute value of pair correlation")
-plt.colorbar()
-plt.show()
-"""
-plt.pcolormesh(x,y,abs_corr,cmap='seismic', norm=colors.LogNorm(vmin = np.sort(abs_corr.flatten())[1], vmax = np.max(np.abs(abs_corr))))
-plt.title("Absolute value of pair correlation")
-plt.colorbar()
-plt.show()
-"""
-phases = np.arctan2(pair_corr.imag,pair_corr.real)
-plt.pcolormesh(x,y,phases,cmap='seismic',vmin = np.min(phases), vmax = np.max(phases))
-plt.title("Phase of pair correlation")
-plt.colorbar()
-plt.show()
+plt.close()
 
-plt.pcolormesh(x,y,theta,cmap='seismic',vmin = np.min(theta), vmax = np.max(theta))
-plt.title("Phase from SC")
+#Plot the circulation of the current
+plt.pcolormesh(x,y,circulating_current, cmap = 'seismic', vmin = -np.max(abs(circulating_current)), vmax = np.max(abs(circulating_current)))
 plt.colorbar()
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
 
+plt.close()
 
-plt.pcolormesh(x,y,(np.arctan2(yv,xv) - np.arctan2(-current_x, current_y))%(2*np.pi),cmap='seismic')
-plt.title("Phase difference in space and currents")
+#Plot the current density
+plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
+plt.xlim(min(x), np.max(x))
 plt.colorbar()
-plt.show()
-# print profiling output
-#stats = pstats.Stats(prof).strip_dirs().sort_stats("cumtime")
-#stats.print_stats(10)
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
 
-xv, yv = np.meshgrid(x,y)
+plt.close()
+
+eV = 0.15
+
+#Find at what index the applied voltage is situated and only include energies larger than the applied voltage
+cutoff_ind = np.max(np.where(epsilons.real<eV))+1
+f_sols_new = f_sols[cutoff_ind:]
+f_grads_new = f_grads[cutoff_ind:]
+f_sols_minus_new = f_sols_minus[cutoff_ind:]
+f_grads_minus_new = f_grads_minus[cutoff_ind:]
+epsilons_new = epsilons[cutoff_ind:]
+
+
+#Calculate the supercurrent in the x and y directions
+current_x = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,0])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,0]) + 2*e_*(A)[:,:,0]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+current_y = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,1])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,1]) + 2*e_*(A)[:,:,1]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+
+abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
+circulating_current = abs_current*np.cos((theta - np.arctan2(current_x, current_y))%(2*np.pi))
+
+#Save data
+np.save(f"x current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_x)
+np.save(f"y current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_y)
+
+#Calculate the A and B fields induced by the supercurrents
+A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
+B_induced = np.gradient(A_delta[:,:,1], dx, axis = 1) -  np.gradient(A_delta[:,:,0], dy, axis = 0)
+
+#Plot the induced magnetic field
+plt.pcolormesh(x,y,B_induced,cmap='RdYlBu_r', vmin = -np.max(abs(B_induced)), vmax = np.max(abs(B_induced)))
+plt.colorbar()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
+
+#Plot the circulation of the current
+plt.pcolormesh(x,y,circulating_current, cmap = 'seismic', vmin = -np.max(abs(circulating_current)), vmax = np.max(abs(circulating_current)))
+plt.colorbar()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
+
+#Plot the current density
 plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
 plt.colorbar()
-plt.title("Streamplot of current")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
 
-plt.streamplot(xv, yv, current_x_no_A, current_y_no_A, color = abs_current_no_A, cmap = "viridis")
+eV = 0.25
+
+#Find at what index the applied voltage is situated and only include energies larger than the applied voltage
+cutoff_ind = np.max(np.where(epsilons.real<eV))+1
+f_sols_new = f_sols[cutoff_ind:]
+f_grads_new = f_grads[cutoff_ind:]
+f_sols_minus_new = f_sols_minus[cutoff_ind:]
+f_grads_minus_new = f_grads_minus[cutoff_ind:]
+epsilons_new = epsilons[cutoff_ind:]
+
+
+#Calculate the supercurrent in the x and y directions
+current_x = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,0])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,0]) + 2*e_*(A)[:,:,0]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+current_y = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,1])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,1]) + 2*e_*(A)[:,:,1]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+
+abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
+circulating_current = abs_current*np.cos((theta - np.arctan2(current_x, current_y))%(2*np.pi))
+
+#Save data
+np.save(f"x current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_x)
+np.save(f"y current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_y)
+
+#Calculate the A and B fields induced by the supercurrents
+A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
+B_induced = np.gradient(A_delta[:,:,1], dx, axis = 1) -  np.gradient(A_delta[:,:,0], dy, axis = 0)
+
+#Plot the induced magnetic field
+plt.pcolormesh(x,y,B_induced,cmap='RdYlBu_r', vmin = -np.max(abs(B_induced)), vmax = np.max(abs(B_induced)))
 plt.colorbar()
-plt.title("Streamplot of current without A field")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
 
-plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "seismic")
+#Plot the circulation of the current
+plt.pcolormesh(x,y,circulating_current, cmap = 'seismic', vmin = -np.max(abs(circulating_current)), vmax = np.max(abs(circulating_current)))
 plt.colorbar()
-plt.title("Streamplot of current")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
 
-plt.quiver(x[Nx//2-10:Nx//2+10],y[Ny//2-10:Ny//2+10],current_x[Ny//2-10:Ny//2+10,Nx//2-10:Nx//2+10].real, current_y[Ny//2-10:Ny//2+10,Nx//2-10:Nx//2+10].real)
-plt.scatter(0,0)
-plt.title("Supercurrent")
-plt.show()
-plt.streamplot(xv[Ny//2-20:Ny//2+20,Nx//2-20:Nx//2+20], yv[Ny//2-20:Ny//2+20,Nx//2-20:Nx//2+20], current_x[Ny//2-20:Ny//2+20,Nx//2-20:Nx//2+20].real, current_y[Ny//2-20:Ny//2+20,Nx//2-20:Nx//2+20].real, color = abs_current[Ny//2-20:Ny//2+20,Nx//2-20:Nx//2+20], cmap = "seismic")
+#Plot the current density
+plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
 plt.colorbar()
-plt.title("Streamplot of current")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
 
-"""
-center_right = core_locs[1]
-print(center_right)
-x_center_right = np.argmin(np.abs(x-center_right[0]))
-y_center_right = np.argmin(np.abs(y-center_right[1]))
+eV = 0.35
 
-N_from_center = 40
-plt.streamplot(xv[y_center_right-N_from_center:y_center_right+N_from_center,x_center_right-N_from_center:x_center_right+N_from_center], yv[y_center_right-N_from_center:y_center_right+N_from_center,x_center_right-N_from_center:x_center_right+N_from_center], current_x[y_center_right-N_from_center:y_center_right+N_from_center,x_center_right-N_from_center:x_center_right+N_from_center].real, current_y[y_center_right-N_from_center:y_center_right+N_from_center,x_center_right-N_from_center:x_center_right+N_from_center].real, color = abs_current[y_center_right-N_from_center:y_center_right+N_from_center,x_center_right-N_from_center:x_center_right+N_from_center], cmap = "seismic")
+#Find at what index the applied voltage is situated and only include energies larger than the applied voltage
+cutoff_ind = np.max(np.where(epsilons.real<eV))+1
+f_sols_new = f_sols[cutoff_ind:]
+f_grads_new = f_grads[cutoff_ind:]
+f_sols_minus_new = f_sols_minus[cutoff_ind:]
+f_grads_minus_new = f_grads_minus[cutoff_ind:]
+epsilons_new = epsilons[cutoff_ind:]
+
+
+#Calculate the supercurrent in the x and y directions
+current_x = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,0])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,0]) + 2*e_*(A)[:,:,0]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+current_y = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,1])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,1]) + 2*e_*(A)[:,:,1]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+
+abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
+circulating_current = abs_current*np.cos((theta - np.arctan2(current_x, current_y))%(2*np.pi))
+
+#Save data
+np.save(f"x current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_x)
+np.save(f"y current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_y)
+
+#Calculate the A and B fields induced by the supercurrents
+A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
+B_induced = np.gradient(A_delta[:,:,1], dx, axis = 1) -  np.gradient(A_delta[:,:,0], dy, axis = 0)
+
+#Plot the induced magnetic field
+plt.pcolormesh(x,y,B_induced,cmap='RdYlBu_r', vmin = -np.max(abs(B_induced)), vmax = np.max(abs(B_induced)))
 plt.colorbar()
-plt.title("Streamplot of current")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
-"""
-N_from_center = 40
-plt.streamplot(xv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center], yv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center], current_x[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center].real, current_y[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center].real, color = abs_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center], cmap = "seismic")
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
+
+#Plot the circulation of the current
+plt.pcolormesh(x,y,circulating_current, cmap = 'seismic', vmin = -np.max(abs(circulating_current)), vmax = np.max(abs(circulating_current)))
 plt.colorbar()
-plt.title("Streamplot of current")
-plt.xlabel("x")
-plt.ylabel("y")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
 
-
-plt.pcolormesh(xv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center],yv[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center],circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center], cmap = 'seismic', vmin = -np.max(np.abs(circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center])), vmax = np.max(np.abs(circulating_current[Ny//2-N_from_center:Ny//2+N_from_center,Nx//2-N_from_center:Nx//2+N_from_center])))
+#Plot the current density
+plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
 plt.colorbar()
-plt.title("Circulation of current")
-plt.show()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
 
 
+eV = 0.5
 
-plt.plot(x[Nx//2:],abs_corr[Ny//2, Nx//2:], label = "Pair corr")
-psi_0 = abs_corr[Ny//2, -1]
-plt.plot(x[Nx//2:],psi_0 * np.tanh(0.1*x[Nx//2:]), label = "Nu = 0.1")
-plt.plot(x[Nx//2:],psi_0 * np.tanh(0.25*x[Nx//2:]), label = "Nu = 0.25")
-plt.plot(x[Nx//2:],psi_0 * np.tanh(0.8*x[Nx//2:]), label = "Nu = 0.8")
-plt.plot(x[Nx//2:],psi_0 * np.tanh(1*x[Nx//2:]), label = "Nu = 1")
-plt.plot(x[Nx//2:],psi_0 * np.tanh(1.5*x[Nx//2:]), label = "Nu = 1.5")
-plt.legend()
-plt.grid()
-plt.show()
+#Find at what index the applied voltage is situated and only include energies larger than the applied voltage
+cutoff_ind = np.max(np.where(epsilons.real<eV))+1
+f_sols_new = f_sols[cutoff_ind:]
+f_grads_new = f_grads[cutoff_ind:]
+f_sols_minus_new = f_sols_minus[cutoff_ind:]
+f_grads_minus_new = f_grads_minus[cutoff_ind:]
+epsilons_new = epsilons[cutoff_ind:]
 
-t2 = time.time()
-print("Time taken", t2-t1)
+
+#Calculate the supercurrent in the x and y directions
+current_x = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,0])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,0]) + 2*e_*(A)[:,:,0]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+current_y = e_*spint.trapz((f_sols_new*np.conjugate(f_grads_minus_new[:,:,:,1])- f_sols_minus_new*np.conjugate(f_grads_new[:,:,:,1]) + 2*e_*(A)[:,:,1]*1j*(f_sols_new*np.conjugate(f_sols_minus_new)-f_sols_minus_new*np.conjugate(f_sols_new))).real, x = epsilons_new, axis = 0).real
+
+abs_current = np.sqrt((current_x.real)**2+(current_y.real)**2)
+circulating_current = abs_current*np.cos((theta - np.arctan2(current_x, current_y))%(2*np.pi))
+
+#Save data
+np.save(f"x current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_x)
+np.save(f"y current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa}", current_y)
+
+#Calculate the A and B fields induced by the supercurrents
+A_delta = update_A_field(xv, yv, current_x, current_y, dx, dy)
+B_induced = np.gradient(A_delta[:,:,1], dx, axis = 1) -  np.gradient(A_delta[:,:,0], dy, axis = 0)
+
+#Plot the induced magnetic field
+plt.pcolormesh(x,y,B_induced,cmap='RdYlBu_r', vmin = -np.max(abs(B_induced)), vmax = np.max(abs(B_induced)))
+plt.colorbar()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Induced magnetic fields for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
+
+#Plot the circulation of the current
+plt.pcolormesh(x,y,circulating_current, cmap = 'seismic', vmin = -np.max(abs(circulating_current)), vmax = np.max(abs(circulating_current)))
+plt.colorbar()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Circulating current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
+plt.close()
+
+#Plot the current density
+plt.streamplot(xv, yv, current_x, current_y, color = abs_current, cmap = "viridis")
+plt.colorbar()
+plt.title(f'eV = {eV}')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.pdf')
+plt.gca().set_aspect('equal')
+plt.savefig(f'Streamplot of current for {num_cores} cores L={Lx} N={Nx} eV={eV} kappa={kappa} nu={nu} G_T={G_T}.png')
